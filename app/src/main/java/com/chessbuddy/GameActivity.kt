@@ -198,4 +198,71 @@ class GameActivity : Activity() {
             try {
                 val before = engine.analyse(fenBefore, 500, 1, null)
                 val bestCp = before.lines.firstOrNull()?.cp ?: 0
-                val playerCp
+                                val playerCp = when {
+                    over != null -> if (over.contains("You win")) 1000 else 0
+                    else -> -(engine.analyse(fenAfter, 500, 1, null).lines.firstOrNull()?.cp ?: 0)
+                }
+                val loss = max(0, clamp(bestCp) - clamp(playerCp))
+                val lbl = label(before.best, played, loss)
+                val bestDesc = if (before.best.length >= 4 && before.best != played)
+                    "\nBest was ${describe(Board().apply { loadFromFen(fenBefore) }, before.best)}" else ""
+                runOnUiThread {
+                    feedback.text = "Your move: $lbl$bestDesc"
+                }
+
+                if (over != null) {
+                    runOnUiThread { status.text = over; busy = false }
+                    return@Thread
+                }
+
+                runOnUiThread { status.text = "Bot is thinking…" }
+                val bot = engine.analyse(fenAfter, 800, 1, elos[eloIdx])
+                runOnUiThread {
+                    val m = board.legalMoves().firstOrNull { uci(it) == bot.best }
+                    if (m != null) {
+                        board.doMove(m)
+                        boardView.lastMove = m
+                        boardView.invalidate()
+                    }
+                    val end = resultText()
+                    status.text = end ?: "Your move (White)"
+                    busy = false
+                }
+            } catch (e: Exception) {
+                runOnUiThread { status.text = "Engine error: ${e.message}"; busy = false }
+            }
+        }.start()
+    }
+
+    private fun hint() {
+        if (busy || resultText() != null || board.sideToMove != Side.WHITE) return
+        busy = true
+        hintLevel++
+        val level = hintLevel
+        val fen = board.fen
+        status.text = "Analysing…"
+        Thread {
+            try {
+                val r = engine.analyse(fen, 1000, 3, null)
+                runOnUiThread {
+                    val top = r.lines.firstOrNull()?.pv?.firstOrNull()
+                    if (top != null) {
+                        if (level == 1) {
+                            val from = Square.fromValue(top.substring(0, 2).uppercase())
+                            val name = board.getPiece(from).pieceType.name.lowercase()
+                            linesView.text = "💡 Hint 1: the best move uses your $name.\nTap Hint again to see the top 3 lines."
+                        } else {
+                            linesView.text = r.lines.joinToString("\n") {
+                                "${it.rank}. ${describe(board, it.pv[0])}   (${fmt(it.cp)})"
+                            }
+                        }
+                    }
+                    status.text = "Your move (White)"
+                    busy = false
+                }
+            } catch (e: Exception) {
+                runOnUiThread { status.text = "Engine error: ${e.message}"; busy = false }
+            }
+        }.start()
+    }
+}
