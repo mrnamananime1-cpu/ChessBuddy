@@ -34,5 +34,5 @@ android {
 }
 
 dependencies {
-    implementation("com.github.bhlangonijr:chesslib:1.3.4")
+    implementation("com.github.bhlangonijr:chesslib:1.3.3")
 }
